@@ -2,8 +2,11 @@ package com.glureau.textviewsandbox
 
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableString
 import android.text.SpannedString
 import android.text.style.DynamicDrawableSpan
+import android.text.style.ImageSpan
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -42,15 +45,21 @@ class MainActivity : AppCompatActivity() {
         replaceTagWithDrawable(TAG2, { drawable2() })
     }
 
-    fun TextView.setTextAndDrawableSize(size: Float) {
-        textSize = size
-        val fontHeight = -paint.fontMetricsInt.ascent
-        (text as? SpannedString)?.getSpans(0, text.length, DynamicDrawableSpan::class.java)?.forEach {
-            val drawable = it.drawable
-            val ratio = drawable.intrinsicWidth.toFloat() / drawable.intrinsicHeight
-            drawable.setBounds(0, 0, (fontHeight * ratio).toInt(), fontHeight)
+    fun TextView.replaceTagWithDrawable(tag: String, drawableFactory: () -> Drawable, ignoreCase: Boolean = true) {
+        val tagPos = text.indexOf(tag, ignoreCase = ignoreCase)
+        if (tagPos >= 0) {
+            var spannableString = text as? SpannableString?
+            if (spannableString == null) {
+                spannableString = SpannableString(text)
+            }
+            spannableString.setSpan(
+                ImageSpan(drawableFactory(), ImageSpan.ALIGN_BASELINE),
+                tagPos,
+                tagPos + tag.length,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            text = spannableString
         }
-
     }
 
     fun drawable1(): Drawable = ContextCompat.getDrawable(this, R.drawable.droid1)!!.apply {

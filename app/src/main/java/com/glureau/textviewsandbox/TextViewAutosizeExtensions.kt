@@ -22,23 +22,6 @@ private const val VERY_WIDE = 1024 * 1024
 
 private var tempTextPaint: TextPaint? = null
 
-fun TextView.replaceTagWithDrawable(tag: String, drawableFactory: () -> Drawable, ignoreCase: Boolean = true) {
-    val tagPos = text.indexOf(tag, ignoreCase = ignoreCase)
-    if (tagPos >= 0) {
-        var spannableString = text as? SpannableString?
-        if (spannableString == null) {
-            spannableString = SpannableString(text)
-        }
-        spannableString.setSpan(
-            ImageSpan(drawableFactory(), ImageSpan.ALIGN_BASELINE),
-            tagPos,
-            tagPos + tag.length,
-            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        text = spannableString
-    }
-}
-
 @SuppressLint("RestrictedApi", "WrongConstant")
 fun TextView.adjustSizeToFit() {
     if (this !is AppCompatTextView) throw java.lang.IllegalStateException("You have to use AppCompatTextView to use adjustSizeToFit")
