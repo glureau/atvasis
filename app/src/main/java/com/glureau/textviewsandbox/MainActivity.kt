@@ -38,8 +38,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun TextView.replaceTags() {
-        replaceTagWithDrawable(TAG1) { drawable1() }
-        replaceTagWithDrawable(TAG2) { drawable2() }
+        replaceTagWithDrawable(TAG1, { drawable1() })
+        replaceTagWithDrawable(TAG2, { drawable2() })
     }
 
     fun TextView.setTextAndDrawableSize(size: Float) {

@@ -22,8 +22,8 @@ private const val VERY_WIDE = 1024 * 1024
 
 private var tempTextPaint: TextPaint? = null
 
-fun TextView.replaceTagWithDrawable(tag: String, drawableFactory: () -> Drawable) {
-    val tagPos = text.indexOf(tag)
+fun TextView.replaceTagWithDrawable(tag: String, drawableFactory: () -> Drawable, ignoreCase: Boolean = true) {
+    val tagPos = text.indexOf(tag, ignoreCase = ignoreCase)
     if (tagPos >= 0) {
         var spannableString = text as? SpannableString?
         if (spannableString == null) {
