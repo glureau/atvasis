@@ -25,7 +25,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         tv1.testWith("Hello :droid1: World!")
-        tv2.testWith("Hello :droid1: World!")
+        tv2.testWith("Hello l:droid1:j World!")
         tv3.testWith("Hello World! :droid2:")
         tv4.testWith("Hello :droid1: World! This is a damn long :droid2: text just to check it's ok")
         tv5.testWith("Hello :droid2: World!")

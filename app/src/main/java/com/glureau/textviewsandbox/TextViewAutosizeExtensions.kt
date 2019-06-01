@@ -1,12 +1,11 @@
 package com.glureau.textviewsandbox
 
 import android.annotation.SuppressLint
+import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.drawable.Drawable
 import android.os.Build
 import android.text.*
 import android.text.style.DynamicDrawableSpan
-import android.text.style.ImageSpan
 import android.util.Log
 import android.util.TypedValue
 import android.widget.TextView
@@ -22,8 +21,36 @@ private const val VERY_WIDE = 1024 * 1024
 
 private var tempTextPaint: TextPaint? = null
 
+interface DrawableHeightComputeMode {
+    fun computeHeight(textPaint: TextPaint, text: CharSequence): Int
+}
+
+open class TextBoundsDrawableHeightComputeMode(private val str: String, private val removeDescent: Boolean) :
+    DrawableHeightComputeMode {
+    private val bounds = Rect()
+    override fun computeHeight(textPaint: TextPaint, text: CharSequence): Int {
+        textPaint.getTextBounds(str, 0, str.length, bounds)
+        if (removeDescent) {
+            return bounds.height() - textPaint.fontMetricsInt.descent
+        } else {
+            return bounds.height()
+        }
+    }
+}
+
+class AscentDrawableHeightComputeMode : DrawableHeightComputeMode {
+    override fun computeHeight(textPaint: TextPaint, text: CharSequence): Int {
+        return -textPaint.fontMetricsInt.ascent
+    }
+}
+
+class AllLettersTextBoundsDrawableHeightComputeMode :
+    TextBoundsDrawableHeightComputeMode("ABCDEFGHIJKLMNOPDRSTUVWXYZabcdefghijklmnopqrstuvwxyz", true)
+
+class CapsTextBoundsDrawableHeightComputeMode : TextBoundsDrawableHeightComputeMode("ABCDEFGHIJKLMNOPDRSTUVWXYZ", false)
+
 @SuppressLint("RestrictedApi", "WrongConstant")
-fun TextView.adjustSizeToFit() {
+fun TextView.adjustSizeToFit(drawableHeightCompute: DrawableHeightComputeMode = AllLettersTextBoundsDrawableHeightComputeMode()) {
     if (this !is AppCompatTextView) throw java.lang.IllegalStateException("You have to use AppCompatTextView to use adjustSizeToFit")
     if (autoSizeTextAvailableSizes().size < 0) throw java.lang.IllegalStateException("You have to define autosize attributes")
 
@@ -34,23 +61,22 @@ fun TextView.adjustSizeToFit() {
         safeAutoSizeStepGranularity(), TypedValue.COMPLEX_UNIT_PX
     )
 
-    val bestSize = findLargestTextSizeWhichFitsWidth(width.toFloat())
+    val bestSize = findLargestTextSizeWhichFitsWidth(width.toFloat(), drawableHeightCompute)
 
     // Force disable autosize as we'll override the default behaviour by setting the size manually.
     (this as AppCompatTextView).setAutoSizeTextTypeWithDefaults(TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE)
 
-    Log.e(LOG_TAG, "Selected font size: $bestSize")
     setTextSize(TypedValue.COMPLEX_UNIT_PX, bestSize.toFloat())
 
     // Requires a last update with final textPaint (edge case when the last try is too big)
-    alignImageToText(paint)
+    alignImageToText(paint, drawableHeightCompute)
 }
 
-fun TextView.alignImageToText(textPaint: TextPaint) {
+fun TextView.alignImageToText(textPaint: TextPaint, drawableHeightComputer: DrawableHeightComputeMode) {
     (text as? SpannedString)?.getSpans(0, text.length, DynamicDrawableSpan::class.java)?.forEach {
         val drawable = it.drawable
         val ratio = drawable.intrinsicWidth.toFloat() / drawable.intrinsicHeight
-        val fontHeight = -textPaint.fontMetricsInt.ascent
+        val fontHeight = drawableHeightComputer.computeHeight(textPaint, text)
         val drawableWidth = truncate(fontHeight * ratio).toInt()
         drawable.setBounds(0, 0, drawableWidth, fontHeight)
     }
@@ -76,7 +102,10 @@ private fun AppCompatTextView.safeAutoSizeStepGranularity() =
  * Performs a binary search to find the largest text size that will still fit within the size
  * available to this view.
  **********************************************************************************************************************/
-private fun AppCompatTextView.findLargestTextSizeWhichFitsWidth(availableWidth: Float): Int {
+private fun AppCompatTextView.findLargestTextSizeWhichFitsWidth(
+    availableWidth: Float,
+    drawableHeightCompute: DrawableHeightComputeMode
+): Int {
     val autoSizeTextAvailableSizes = autoSizeTextAvailableSizes()
     val sizesCount = autoSizeTextAvailableSizes.size
     if (sizesCount == 0) {
@@ -89,7 +118,12 @@ private fun AppCompatTextView.findLargestTextSizeWhichFitsWidth(availableWidth: 
     var sizeToTryIndex: Int
     while (lowIndex <= highIndex) {
         sizeToTryIndex = (lowIndex + highIndex) / 2
-        if (suggestedSizeFitsInWidth(autoSizeTextAvailableSizes[sizeToTryIndex], availableWidth)) {
+        if (suggestedSizeFitsInWidth(
+                autoSizeTextAvailableSizes[sizeToTryIndex],
+                availableWidth,
+                drawableHeightCompute
+            )
+        ) {
             bestSizeIndex = lowIndex
             lowIndex = sizeToTryIndex + 1
         } else {
@@ -104,13 +138,25 @@ private fun AppCompatTextView.findLargestTextSizeWhichFitsWidth(availableWidth: 
 /**********************************************************************************************************************
  * Shortcuts to suggestedSizeFitsInSpace(suggestedSizeInPx, RectF(0, 0, availableWidth, VERY_WIDE))
  **********************************************************************************************************************/
-private fun AppCompatTextView.suggestedSizeFitsInWidth(suggestedSizeInPx: Int, availableWidth: Float) =
-    suggestedSizeFitsInSpace(suggestedSizeInPx, RectF(0f, 0f, availableWidth, VERY_WIDE.toFloat()))
+private fun AppCompatTextView.suggestedSizeFitsInWidth(
+    suggestedSizeInPx: Int,
+    availableWidth: Float,
+    drawableHeightCompute: DrawableHeightComputeMode
+) =
+    suggestedSizeFitsInSpace(
+        suggestedSizeInPx,
+        RectF(0f, 0f, availableWidth, VERY_WIDE.toFloat()),
+        drawableHeightCompute
+    )
 
 /**********************************************************************************************************************
  * Copied from AppCompatTextViewAutoSizeHelper.
  **********************************************************************************************************************/
-private fun AppCompatTextView.suggestedSizeFitsInSpace(suggestedSizeInPx: Int, availableSpace: RectF): Boolean {
+private fun AppCompatTextView.suggestedSizeFitsInSpace(
+    suggestedSizeInPx: Int,
+    availableSpace: RectF,
+    drawableHeightCompute: DrawableHeightComputeMode
+): Boolean {
     transformationMethod?.let {
         val transformedText = it.getTransformation(text, this)
         if (transformedText != null) {
@@ -143,7 +189,7 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(suggestedSizeInPx: Int, a
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
-    tempTextPaint?.let { alignImageToText(it) }
+    tempTextPaint?.let { alignImageToText(it, drawableHeightCompute) }
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////

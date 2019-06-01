@@ -57,16 +57,6 @@
                 android:text="Hello World!"/>
 
         <TextView
-                android:id="@+id/longtext"
-                android:background="@color/colorAccent"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="20dp"
-                android:layout_marginEnd="20dp"
-                android:lines="1"
-                android:text="Hello :droid1: World! This is a damn long :droid2: text just to check minimal size is applied"/>
-
-        <TextView
                 android:id="@+id/tv5"
                 android:background="@color/colorPrimary"
                 android:layout_width="match_parent"
