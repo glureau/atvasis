@@ -1,5 +1,6 @@
 package com.glureau.textviewsandbox
 
+import android.annotation.SuppressLint
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.os.Build
@@ -11,9 +12,9 @@ import android.util.TypedValue
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.widget.TextViewCompat
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.roundToInt
 import kotlin.math.truncate
 
 private const val LOG_TAG = "TextViewAutosizeExt"
@@ -38,13 +39,23 @@ fun TextView.replaceTagWithDrawable(tag: String, drawableFactory: () -> Drawable
     }
 }
 
+@SuppressLint("RestrictedApi", "WrongConstant")
 fun TextView.adjustSizeToFit() {
     if (this !is AppCompatTextView) throw java.lang.IllegalStateException("You have to use AppCompatTextView to use adjustSizeToFit")
     if (autoSizeTextAvailableSizes().size < 0) throw java.lang.IllegalStateException("You have to define autosize attributes")
-    val bestSize = findLargestTextSizeWhichFitsWidth(Math.floor(width.toDouble()).toFloat())//TODO: Clean floor
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        setAutoSizeTextTypeWithDefaults(AppCompatTextView.AUTO_SIZE_TEXT_TYPE_NONE)
-    }
+
+    // Force enable the autosize so the base (AppCompat)TextView will generate auto text sizes
+    // downcast required for <26 api
+    (this as AppCompatTextView).setAutoSizeTextTypeUniformWithConfiguration(
+        safeAutoSizeMinTextSize(), safeAutoSizeMaxTextSize(),
+        safeAutoSizeStepGranularity(), TypedValue.COMPLEX_UNIT_PX
+    )
+
+    val bestSize = findLargestTextSizeWhichFitsWidth(width.toFloat())
+
+    // Force disable autosize as we'll override the default behaviour by setting the size manually.
+    (this as AppCompatTextView).setAutoSizeTextTypeWithDefaults(TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE)
+
     Log.e(LOG_TAG, "Selected font size: $bestSize")
     setTextSize(TypedValue.COMPLEX_UNIT_PX, bestSize.toFloat())
 
@@ -61,6 +72,21 @@ fun TextView.alignImageToText(textPaint: TextPaint) {
         drawable.setBounds(0, 0, drawableWidth, fontHeight)
     }
 }
+
+@SuppressLint("RestrictedApi")
+private fun AppCompatTextView.safeAutoSizeMinTextSize(): Int =
+    if (autoSizeMinTextSize != -1) autoSizeMinTextSize
+    else TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, resources.displayMetrics).toInt()
+
+@SuppressLint("RestrictedApi")
+private fun AppCompatTextView.safeAutoSizeMaxTextSize() =
+    if (autoSizeMaxTextSize != -1) autoSizeMaxTextSize
+    else TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 112f, resources.displayMetrics).toInt()
+
+@SuppressLint("RestrictedApi")
+private fun AppCompatTextView.safeAutoSizeStepGranularity() =
+    if (autoSizeStepGranularity != -1) autoSizeStepGranularity else 1
+
 
 /**********************************************************************************************************************
  * Copied from AppCompatTextViewAutoSizeHelper.
@@ -134,13 +160,7 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(suggestedSizeInPx: Int, a
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
-    (text as? SpannedString)?.getSpans(0, text.length, DynamicDrawableSpan::class.java)?.forEach {
-        val drawable = it.drawable
-        val ratio = drawable.intrinsicWidth.toFloat() / drawable.intrinsicHeight
-        val fontHeight = -(tempTextPaint?.fontMetricsInt?.ascent ?: -150)
-        val drawableWidth = truncate(fontHeight * ratio).toInt()
-        drawable.setBounds(0, 0, drawableWidth, fontHeight)
-    }
+    tempTextPaint?.let { alignImageToText(it) }
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
@@ -173,7 +193,7 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(suggestedSizeInPx: Int, a
     // Lines overflow.
     if (maxLines != -1 && (layout.lineCount > maxLines || layout.getLineEnd(layout.lineCount - 1) != text.length)) {
         Log.e(
-            LOG_TAG, "Lines overflow ${layout.lineCount} > $maxLines   OR   " +
+            LOG_TAG, "Lines overflow $suggestedSizeInPx -> ${layout.lineCount} > $maxLines   OR   " +
                     layout.getLineEnd(layout.lineCount - 1) + " != " + text.length
         )
         return false
@@ -181,7 +201,9 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(suggestedSizeInPx: Int, a
 
     // Height overflow.
     if (layout.height > availableSpace.bottom) {
-        Log.e(LOG_TAG, "Line height overflow? " + layout.height + "<=" + availableSpace.bottom)
+        Log.e(LOG_TAG, "Line height overflow? $suggestedSizeInPx -> " + layout.height + "<=" + availableSpace.bottom)
+    } else {
+        Log.e(LOG_TAG, "No overflow for suggestedSizeInPx=$suggestedSizeInPx")
     }
     return layout.height <= availableSpace.bottom
 

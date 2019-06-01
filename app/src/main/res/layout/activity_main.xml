@@ -22,9 +22,7 @@
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="20dp"
                 android:lines="1"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMaxTextSize="200sp"
-                app:autoSizeMinTextSize="5sp"/>
+                app:autoSizeMaxTextSize="200sp"/>
 
         <TextView
                 android:id="@+id/tv2"
@@ -34,9 +32,7 @@
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="20dp"
                 android:lines="1"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMaxTextSize="500sp"
-                app:autoSizeMinTextSize="5sp"/>
+                android:text="Hello World!"/>
 
         <TextView
                 android:id="@+id/tv3"
@@ -46,7 +42,6 @@
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="20dp"
                 android:lines="1"
-                app:autoSizeTextType="uniform"
                 android:text="Hello World!"/>
 
         <TextView
@@ -58,7 +53,18 @@
                 android:layout_marginEnd="20dp"
                 android:lines="1"
                 app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="4sp"
                 android:text="Hello World!"/>
+
+        <TextView
+                android:id="@+id/longtext"
+                android:background="@color/colorAccent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:lines="1"
+                android:text="Hello :droid1: World! This is a damn long :droid2: text just to check minimal size is applied"/>
 
         <TextView
                 android:id="@+id/tv5"
@@ -68,7 +74,6 @@
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="20dp"
                 android:lines="1"
-                app:autoSizeTextType="uniform"
                 android:text="Hello World!"/>
 
         <TextView
@@ -79,7 +84,7 @@
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="20dp"
                 android:lines="2"
-                app:autoSizeTextType="uniform"
+                android:maxLines="2"
                 android:text="Hello World!"/>
 
     </LinearLayout>
