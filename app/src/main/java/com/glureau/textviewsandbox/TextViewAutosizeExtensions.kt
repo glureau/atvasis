@@ -12,6 +12,7 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.doOnPreDraw
 import androidx.core.widget.TextViewCompat
+import java.lang.ref.WeakReference
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.truncate
@@ -44,14 +45,17 @@ interface DrawableHeightComputeMode {
 @SuppressLint("RestrictedApi", "WrongConstant")
 fun TextView.adjustSizeToFit(drawableHeightCompute: DrawableHeightComputeMode = AllLettersTextBoundsDrawableHeightComputeMode()) {
     if (this !is AppCompatTextView) throw java.lang.IllegalStateException("You have to use AppCompatTextView to use adjustSizeToFit")
-    if (autoSizeTextAvailableSizes().size < 0) throw java.lang.IllegalStateException("You have to define autosize attributes")
 
+    // Wait pre-draw to ensure the view width is ready
     doOnPreDraw {
+        // Re-store previous configuration or create new one based on XML attributes
+        val autoSizeConfiguration = providesAutoSizeConfiguration()
+
         // Force enable the autosize so the base (AppCompat)TextView will generate auto text sizes (will use default values, not XML ones)
         // downcast required for <26 api (will target hidden API)
         (this as AppCompatTextView).setAutoSizeTextTypeUniformWithConfiguration(
-            safeAutoSizeMinTextSize(), safeAutoSizeMaxTextSize(),
-            safeAutoSizeStepGranularity(), TypedValue.COMPLEX_UNIT_PX
+            safeAutoSizeMinTextSize(autoSizeConfiguration), safeAutoSizeMaxTextSize(autoSizeConfiguration),
+            safeAutoSizeStepGranularity(autoSizeConfiguration), TypedValue.COMPLEX_UNIT_PX
         )
 
         val bestSize = findLargestTextSizeWhichFitsWidth(
@@ -67,6 +71,9 @@ fun TextView.adjustSizeToFit(drawableHeightCompute: DrawableHeightComputeMode = 
 
         // Requires a last update with final textPaint (edge case when the last try is too big)
         alignImageToText(paint, drawableHeightCompute)
+
+        // As we've probably changed the height, we need to request layout update.
+        requestLayout()
     }
 }
 
@@ -80,19 +87,61 @@ fun TextView.alignImageToText(textPaint: TextPaint, drawableHeightComputer: Draw
     }
 }
 
-@SuppressLint("RestrictedApi")
-private fun AppCompatTextView.safeAutoSizeMinTextSize(): Int =
-    if (autoSizeMinTextSize != -1) autoSizeMinTextSize
-    else TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, resources.displayMetrics).toInt()
+
+/**********************************************************************************************************************
+ * Storage of AutoSizeConfiguration
+ *
+ * 1 - We cannot setTextSize without disabling autosize (or use Reflection but way more fragile...)
+ * 2 - Disabling autosize reset all values and attrs is not re-parsed so data is lost.
+ * Due to these 2 reasons, we need a way to keep track of the previous values to restore them when required.
+ *
+ * The solution is to store in a static map a weak reference of the view and an AutoSizeConfiguration data class.
+ * So if there is no data available (first usage or first view destroyed and recreated),
+ * we store the attributes in our data class, and if there is already a data class, we re-use them.
+ **********************************************************************************************************************/
+
+private val autoSizeConfigurations = mutableMapOf<WeakReference<AppCompatTextView>, AutoSizeConfiguration>()
+
+private data class AutoSizeConfiguration(val minTextSize: Int, val maxTextSize: Int, val stepGranularity: Int)
 
 @SuppressLint("RestrictedApi")
-private fun AppCompatTextView.safeAutoSizeMaxTextSize() =
-    if (autoSizeMaxTextSize != -1) autoSizeMaxTextSize
-    else TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 112f, resources.displayMetrics).toInt()
+private fun AppCompatTextView.providesAutoSizeConfiguration(): AutoSizeConfiguration {
+    val previousConfigurations = autoSizeConfigurations.filterKeys { it.get() === this }
+    return if (previousConfigurations.isNotEmpty()) {
+        previousConfigurations.values.toList()[0]
+    } else {
+        AutoSizeConfiguration(autoSizeMinTextSize, autoSizeMaxTextSize, autoSizeStepGranularity)
+            .also { autoSizeConfigurations[WeakReference(this)] = it }
+    }
+}
 
-@SuppressLint("RestrictedApi")
-private fun AppCompatTextView.safeAutoSizeStepGranularity() =
-    if (autoSizeStepGranularity != -1) autoSizeStepGranularity else 1
+// Values copied from AppCompatTextViewAutoSizeHelper
+// Default minimum size for auto-sizing text in scaled pixels.
+private const val DEFAULT_AUTO_SIZE_MIN_TEXT_SIZE_IN_SP = 12f
+// Default maximum size for auto-sizing text in scaled pixels.
+private const val DEFAULT_AUTO_SIZE_MAX_TEXT_SIZE_IN_SP = 112f
+// Default value for the step size in pixels.
+private const val DEFAULT_AUTO_SIZE_GRANULARITY_IN_PX = 1
+
+private fun AppCompatTextView.safeAutoSizeMinTextSize(previousConfiguration: AutoSizeConfiguration): Int =
+    if (previousConfiguration.minTextSize != -1) previousConfiguration.minTextSize
+    else TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        DEFAULT_AUTO_SIZE_MIN_TEXT_SIZE_IN_SP,
+        resources.displayMetrics
+    ).toInt()
+
+private fun AppCompatTextView.safeAutoSizeMaxTextSize(previousConfiguration: AutoSizeConfiguration) =
+    if (previousConfiguration.maxTextSize != -1) previousConfiguration.maxTextSize
+    else TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        DEFAULT_AUTO_SIZE_MAX_TEXT_SIZE_IN_SP,
+        resources.displayMetrics
+    ).toInt()
+
+private fun safeAutoSizeStepGranularity(previousConfiguration: AutoSizeConfiguration) =
+    if (previousConfiguration.stepGranularity != -1) previousConfiguration.stepGranularity
+    else DEFAULT_AUTO_SIZE_GRANULARITY_IN_PX
 
 
 /**********************************************************************************************************************
@@ -148,7 +197,7 @@ private fun AppCompatTextView.suggestedSizeFitsInWidth(
     )
 
 /**********************************************************************************************************************
- * Copied from AppCompatTextViewAutoSizeHelper.
+ * Copied from AppCompatTextViewAutoSizeHelper + modifications for image alignment (see comment block)
  **********************************************************************************************************************/
 private fun AppCompatTextView.suggestedSizeFitsInSpace(
     suggestedSizeInPx: Int,
@@ -199,14 +248,12 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(
     val alignment = invokeAndReturnWithDefault(
         this, "getLayoutAlignment", Layout.Alignment.ALIGN_NORMAL
     )
-    val layout = if (Build.VERSION.SDK_INT >= 23)
-        createStaticLayoutForMeasuring(
-            text, alignment, Math.round(availableSpace.right), maxLines
-        )
-    else
-        createStaticLayoutForMeasuringPre23(
-            text, alignment, Math.round(availableSpace.right)
-        )
+    val layout = if (Build.VERSION.SDK_INT >= 23) {
+        createStaticLayoutForMeasuring(text, alignment, Math.round(availableSpace.right), maxLines)
+    } else {
+        createStaticLayoutForMeasuringPre23(text, alignment, Math.round(availableSpace.right))
+    }
+
     // Lines overflow.
     if (maxLines != -1 && (layout.lineCount > maxLines || layout.getLineEnd(layout.lineCount - 1) != text.length)) {
         return false
@@ -234,7 +281,7 @@ private fun AppCompatTextView.createStaticLayoutForMeasuring(
     )
 
     val layoutBuilder = StaticLayout.Builder.obtain(
-        text, 0, text.length, tempTextPaint, availableWidth
+        text, 0, text.length, tempTextPaint!!, availableWidth
     )
 
     return layoutBuilder.setAlignment(alignment!!)

@@ -4,13 +4,10 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.text.Spannable
 import android.text.SpannableString
-import android.text.SpannedString
-import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.doOnPreDraw
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
@@ -25,8 +22,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         tv1.testWith("Hello :droid1: World!")
-        tv2.testWith("Hello l:droid1:j World!")
-        tv3.testWith("Hello World! :droid2:")
+        tv2.testWith("Hello World! :droid2:")
+        tv3.testWith("H:droid1:W!")
         tv4.testWith("Hello :droid1: World! This is a damn long :droid2: text just to check it's ok")
         tv5.testWith("Hello :droid2: World!")
         tv6.testWith("Hello:droid1: 2 lines!")
@@ -35,9 +32,8 @@ class MainActivity : AppCompatActivity() {
     private fun TextView.testWith(txt: String) {
         text = txt
         replaceTags()
-        doOnPreDraw {
-            adjustSizeToFit()
-        }
+        adjustSizeToFit()
+        postDelayed({ adjustSizeToFit() }, 1000)
     }
 
     private fun TextView.replaceTags() {
