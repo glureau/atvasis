@@ -1,7 +1,6 @@
 package com.glureau.textviewsandbox
 
 import android.annotation.SuppressLint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import android.text.*
@@ -11,6 +10,7 @@ import android.util.TypedValue
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.view.doOnPreDraw
 import androidx.core.widget.TextViewCompat
 import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
@@ -25,51 +25,49 @@ interface DrawableHeightComputeMode {
     fun computeHeight(textPaint: TextPaint, text: CharSequence): Int
 }
 
-open class TextBoundsDrawableHeightComputeMode(private val str: String, private val removeDescent: Boolean) :
-    DrawableHeightComputeMode {
-    private val bounds = Rect()
-    override fun computeHeight(textPaint: TextPaint, text: CharSequence): Int {
-        textPaint.getTextBounds(str, 0, str.length, bounds)
-        if (removeDescent) {
-            return bounds.height() - textPaint.fontMetricsInt.descent
-        } else {
-            return bounds.height()
-        }
-    }
-}
 
-class AscentDrawableHeightComputeMode : DrawableHeightComputeMode {
-    override fun computeHeight(textPaint: TextPaint, text: CharSequence): Int {
-        return -textPaint.fontMetricsInt.ascent
-    }
-}
-
-class AllLettersTextBoundsDrawableHeightComputeMode :
-    TextBoundsDrawableHeightComputeMode("ABCDEFGHIJKLMNOPDRSTUVWXYZabcdefghijklmnopqrstuvwxyz", true)
-
-class CapsTextBoundsDrawableHeightComputeMode : TextBoundsDrawableHeightComputeMode("ABCDEFGHIJKLMNOPDRSTUVWXYZ", false)
-
+/**
+ * Method to adjust (auto-size) the text size AND the images height.
+ * This approach is based on width and lines instead of height, so you can use layout_heigt="wrap_content"
+ * and the TextView height will adapt to the best font size (instead of hardcoded heights).
+ * Idea of improvements: use layout_height value if hardcoded, and use current behaviour for match_parent or wrap_content.
+ *
+ * /!\  WARNING  /!\
+ * You can define the min/max/granularity of autoSize with the standard appCompat definitions BUT you have to define the type to uniform.
+ *         app:autoSizeTextType="uniform"
+ *         app:autoSizeMaxTextSize="500sp"
+ * If you don't define type=uniform, the XML values will be ignored.
+ * /!\  WARNING  /!\
+ *
+ * Also you can use this method with no autoSize parameters and it will work with the default values.
+ */
 @SuppressLint("RestrictedApi", "WrongConstant")
 fun TextView.adjustSizeToFit(drawableHeightCompute: DrawableHeightComputeMode = AllLettersTextBoundsDrawableHeightComputeMode()) {
     if (this !is AppCompatTextView) throw java.lang.IllegalStateException("You have to use AppCompatTextView to use adjustSizeToFit")
     if (autoSizeTextAvailableSizes().size < 0) throw java.lang.IllegalStateException("You have to define autosize attributes")
 
-    // Force enable the autosize so the base (AppCompat)TextView will generate auto text sizes
-    // downcast required for <26 api
-    (this as AppCompatTextView).setAutoSizeTextTypeUniformWithConfiguration(
-        safeAutoSizeMinTextSize(), safeAutoSizeMaxTextSize(),
-        safeAutoSizeStepGranularity(), TypedValue.COMPLEX_UNIT_PX
-    )
+    doOnPreDraw {
+        // Force enable the autosize so the base (AppCompat)TextView will generate auto text sizes (will use default values, not XML ones)
+        // downcast required for <26 api (will target hidden API)
+        (this as AppCompatTextView).setAutoSizeTextTypeUniformWithConfiguration(
+            safeAutoSizeMinTextSize(), safeAutoSizeMaxTextSize(),
+            safeAutoSizeStepGranularity(), TypedValue.COMPLEX_UNIT_PX
+        )
 
-    val bestSize = findLargestTextSizeWhichFitsWidth(width.toFloat(), drawableHeightCompute)
+        val bestSize = findLargestTextSizeWhichFitsWidth(
+            width.toFloat() - totalPaddingStart - totalPaddingEnd,
+            drawableHeightCompute
+        )
 
-    // Force disable autosize as we'll override the default behaviour by setting the size manually.
-    (this as AppCompatTextView).setAutoSizeTextTypeWithDefaults(TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE)
+        // Force disable autosize as we'll override the default behaviour by setting the size manually.
+        // downcast required for <26 api (will target hidden API)
+        (this as AppCompatTextView).setAutoSizeTextTypeWithDefaults(TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE)
 
-    setTextSize(TypedValue.COMPLEX_UNIT_PX, bestSize.toFloat())
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, bestSize.toFloat())
 
-    // Requires a last update with final textPaint (edge case when the last try is too big)
-    alignImageToText(paint, drawableHeightCompute)
+        // Requires a last update with final textPaint (edge case when the last try is too big)
+        alignImageToText(paint, drawableHeightCompute)
+    }
 }
 
 fun TextView.alignImageToText(textPaint: TextPaint, drawableHeightComputer: DrawableHeightComputeMode) {
@@ -184,17 +182,7 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
     tempTextPaint?.let { alignImageToText(it, drawableHeightCompute) }
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
     //////////////////////////////////////////////////////
@@ -221,19 +209,10 @@ private fun AppCompatTextView.suggestedSizeFitsInSpace(
         )
     // Lines overflow.
     if (maxLines != -1 && (layout.lineCount > maxLines || layout.getLineEnd(layout.lineCount - 1) != text.length)) {
-        Log.e(
-            LOG_TAG, "Lines overflow $suggestedSizeInPx -> ${layout.lineCount} > $maxLines   OR   " +
-                    layout.getLineEnd(layout.lineCount - 1) + " != " + text.length
-        )
         return false
     }
 
     // Height overflow.
-    if (layout.height > availableSpace.bottom) {
-        Log.e(LOG_TAG, "Line height overflow? $suggestedSizeInPx -> " + layout.height + "<=" + availableSpace.bottom)
-    } else {
-        Log.e(LOG_TAG, "No overflow for suggestedSizeInPx=$suggestedSizeInPx")
-    }
     return layout.height <= availableSpace.bottom
 
 }
